@@ -22,6 +22,7 @@ import cv2
 IM_WIDTH = 640
 IM_HEIGHT = 480
 
+
 def process_img(image):
     i = np.array(image.raw_data)
     print(i.shape)
@@ -30,6 +31,7 @@ def process_img(image):
     cv2.imshow("", i3)
     cv2.waitKey(1)
     return i3 / 255.0
+
 
 def main():
     # list to store all actors to destroy together after simulation
@@ -44,6 +46,26 @@ def main():
         world = client.get_world()
 
         # get the list of blueprints that is required to spawn actors
+        #settings = world.get_settings()
+
+
+        # must be less than 0.1, or else physics will be noisy
+        # settings.fixed_delta_seconds = 0.05
+        # must use fixed delta seconds and synchronous mode for python api controlled sim, or else
+        # camera and sensor data may not match simulation properly and will be noisy
+        #settings.synchronous_mode = True
+        #world.apply_settings(settings)
+
+        weather = carla.WeatherParameters(
+            cloudiness=80.0,
+            precipitation=100.0,
+            sun_altitude_angle=110.0)
+
+        #or use precomputed weathers
+        #weather = carla.WeatherParameters.WetCloudySunset
+
+        world.set_weather(weather)
+
         blueprint_library = world.get_blueprint_library()
 
         # get random vehicle from blueprint
@@ -75,25 +97,26 @@ def main():
 
         # attatch camera to vehicle
         vehicle_cam = blueprint_library.find('sensor.camera.rgb')
+        # vehicle_cam.set_attribute('PostProcessing', 'SceneFinal')
         vehicle_cam.set_attribute('image_size_x', f"{IM_WIDTH}")
         vehicle_cam.set_attribute('image_size_y', f"{IM_HEIGHT}")
         vehicle_cam.set_attribute('fov', '110')
 
         # set camere near hood of vehicle
-        spawn_point = carla.Transform(carla.Location(x = 2.5, z = 0.7))
+        spawn_point = carla.Transform(carla.Location(x=2.5, z=0.7))
 
-        sensor = world.spawn_actor(vehicle_cam, spawn_point, attach_to = vehicle)
+        sensor = world.spawn_actor(vehicle_cam, spawn_point, attach_to=vehicle)
 
         actor_list.append(sensor)
 
         sensor.listen(lambda data: process_img(data))
-                
-        time.sleep(30)
-    
-    finally:
 
+        time.sleep(30)
+
+    finally:
         print('destroying actors')
-        #client.apply_batch([carla.command.DestroyActor(x) for x in actor_list])
+        #sensor.destroy()
+        client.apply_batch([carla.command.DestroyActor(x) for x in actor_list])
         for actor in actor_list:
             actor.destroy()
         print('done.')
