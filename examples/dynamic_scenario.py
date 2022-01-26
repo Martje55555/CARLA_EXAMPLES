@@ -261,7 +261,7 @@ def main():
 
         elapsed_time = 0.0
 
-        timeout = time.time() + 30   # 60*5 = 5 minutes from now
+        timeout = time.time() + 30.0  # 60*5 = 5 minutes from now
 
         while True:
             if time.time() > timeout:
