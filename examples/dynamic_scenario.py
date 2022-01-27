@@ -1,3 +1,4 @@
+from distutils.spawn import spawn
 import glob
 from multiprocessing.context import set_spawning_popen
 import os
@@ -23,12 +24,23 @@ import math
 
 IM_WIDTH = 2560
 IM_HEIGHT = 1440
+# list to store all actors to destroy together after simulation
+actor_list = []
 
 
 def process_img(image):
     i = np.array(image.raw_data)
     print(i.shape)
     i2 = i.reshape((IM_HEIGHT, IM_WIDTH, 4))
+    i3 = i2[:, :, :3]
+    cv2.imshow("", i3)
+    cv2.waitKey(1)
+    return i3 / 255.0
+
+def process_img_rear(image):
+    i = np.array(image.raw_data)
+    print(i.shape)
+    i2 = i.reshape((1440, 2560, 4))
     i3 = i2[:, :, :3]
     cv2.imshow("", i3)
     cv2.waitKey(1)
@@ -106,9 +118,53 @@ class Weather(object):
     def __str__(self):
         return '%s %s' % (self._sun, self._storm)
 
+def spawn_vehicles_around_ego_vehicles(ego_vehicle, radius, spawn_points, numbers_of_vehicles, world, client):
+    # parameters:
+    # ego_vehicle :: your target vehicle
+    # radius :: the distance limitation between ego-vehicle and other free-vehicles
+    # spawn_points  :: the available spawn points in current map
+    # numbers_of_vehicles :: the number of free-vehicles around ego-vehicle that you need
+    np.random.shuffle(spawn_points)  # shuffle  all the spawn points
+    ego_location = ego_vehicle.get_location()
+    accessible_points = []
+    for spawn_point in spawn_points:
+        dis = math.sqrt((ego_location.x-spawn_point.location.x)**2 + (ego_location.y-spawn_point.location.y)**2)
+        # it also can include z-coordinate,but it is unnecessary
+        if dis < radius:
+            print(dis)
+            accessible_points.append(spawn_point)
+
+    vehicle_bps = world.get_blueprint_library().filter('vehicle.*.*')   # don't specify the type of vehicle
+    vehicle_bps = [x for x in vehicle_bps if int(x.get_attribute('number_of_wheels')) == 4]  # only choose car with 4 wheels
+
+    vehicle_list = []  # keep the spawned vehicle in vehicle_list, because we need to link them with traffic_manager
+    if len(accessible_points) < numbers_of_vehicles:
+        # if your radius is relatively small,the satisfied points may be insufficient
+        numbers_of_vehicles = len(accessible_points)
+
+    for i in range(numbers_of_vehicles):  # generate the free vehicle
+        point = accessible_points[i]
+        vehicle_bp = np.random.choice(vehicle_bps)
+        try:
+            vehicle = world.spawn_actor(vehicle_bp, point)
+            vehicle_list.append(vehicle)
+            actor_list.append(vehicle)
+        except:
+            print('failed')  # if failed, print the hints.
+            pass
+# you also can add those free vehicle into trafficemanager,and set them to autopilot.
+# Only need to get rid of comments for below code. Otherwise, the those vehicle will be static
+    tm = client.get_trafficmanager()  # create a TM object
+    tm.global_percentage_speed_difference(10.0)  # set the global speed limitation
+    tm_port = tm.get_port()  # get the port of tm. we need add vehicle to tm by this port
+    for v in vehicle_list:  # set every vehicle's mode
+        v.set_autopilot(True, tm_port)  # you can get those functions detail in carla document
+        tm.ignore_lights_percentage(v, 0)
+        tm.distance_to_leading_vehicle(v, 0.5)
+        tm.vehicle_percentage_speed_difference(v, -20)
+
 def main():
-    # list to store all actors to destroy together after simulation
-    actor_list = []
+    
     #vehicles_list = []
     walkers_list = []
     all_id = []
@@ -121,15 +177,17 @@ def main():
         # get world that is currently running
         world = client.get_world()
 
+        
+
         # get the list of blueprints that is required to spawn actors
         #settings = world.get_settings()
 
-
         # must be less than 0.1, or else physics will be noisy
-        # settings.fixed_delta_seconds = 0.05
+        #settings.fixed_delta_seconds = 0.05
         # must use fixed delta seconds and synchronous mode for python api controlled sim, or else
         # camera and sensor data may not match simulation properly and will be noisy
         #settings.synchronous_mode = True
+        #settings.no_rendering_mode = True
         #world.apply_settings(settings)
 
         weather = carla.WeatherParameters(
@@ -174,7 +232,7 @@ def main():
         walker_bp = random.choice(blueprintsWalkers)
 
         spawn_points = []
-        for i in range(1):
+        for i in range(2):
             spawn_point = carla.Transform()
             spawn_point.location = world.get_random_location_from_navigation()
             if (spawn_point.location != None):
@@ -224,49 +282,59 @@ def main():
             # random max speed
             all_actors[i].set_max_speed(1 + random.random())
 
-        # add more vehicles to the world
-        transform.location += carla.Location(x=40, y=-3.2)
-        transform.rotation.yaw = -180.0
-        for _ in range(0, 1):
-            transform.location.x += 8.0
+        # # add more vehicles to the world
+        # transform.location += carla.Location(x=40, y=-3.2)
+        # transform.rotation.yaw = -180.0
+        # for _ in range(0, 2):
+        #     transform.location.x += 8.0
 
-            bp = random.choice(blueprint_library.filter('vehicle'))
+        #     bp = random.choice(blueprint_library.filter('vehicle'))
 
-            npc = world.try_spawn_actor(bp, transform)
-            if npc is not None:
-                actor_list.append(npc)
-                npc.set_autopilot(True)
-                print('created %s' % npc.type_id)
+        #     npc = world.try_spawn_actor(bp, transform)
+        #     if npc is not None:
+        #         actor_list.append(npc)
+        #         npc.set_autopilot(True)
+        #         print('created %s' % npc.type_id)
+        spawn_points = world.get_map().get_spawn_points()
+        spawn_vehicles_around_ego_vehicles(ego_vehicle=vehicle, radius=60, spawn_points=spawn_points, numbers_of_vehicles=10, world=world, client=client)
 
         # attatch camera to vehicle
         vehicle_cam = blueprint_library.find('sensor.camera.rgb')
+        #rear_cam = blueprint_library.find('sensor.camera.rgb')
         # vehicle_cam.set_attribute('PostProcessing', 'SceneFinal')
         vehicle_cam.set_attribute('image_size_x', f"{IM_WIDTH}")
         vehicle_cam.set_attribute('image_size_y', f"{IM_HEIGHT}")
         vehicle_cam.set_attribute('fov', '110')
 
+        # rear_cam.set_attribute('image_size_x', "1440")
+        # rear_cam.set_attribute('image_size_y', "2560")
+        # rear_cam.set_attribute('fov', '60')
+
         # set camera near hood of vehicle
         spawn_point = carla.Transform(carla.Location(x=.20, y=0, z=1.10))
+        #rear_camSpawn = carla.Transform(carla.Location(x=.10, y=0, z=1.50))
 
+        #rear_sensor = world.spawn_actor(rear_cam, rear_camSpawn, attach_to=vehicle)
         sensor = world.spawn_actor(vehicle_cam, spawn_point, attach_to=vehicle)
 
+        #actor_list.append(rear_sensor)
         actor_list.append(sensor)
 
+        #rear_sensor.listen(lambda data: process_img_rear(data))
         sensor.listen(lambda data: process_img(data))
 
-        speed_factor = 1.0
+        speed_factor = 5.0
         update_freq = 0.1 / speed_factor
 
         weather = Weather(world.get_weather())
 
         elapsed_time = 0.0
 
-        timeout = time.time() + 30.0  # 60*5 = 5 minutes from now
+        timeout = time.time() + 30.0   # 60*5 = 5 minutes from now
 
         while True:
             if time.time() > timeout:
                 break
-            #test = test - 1
             #sys.stdout.write(str(elapsed_time))
             timestamp = world.wait_for_tick(seconds=30.0).timestamp
             elapsed_time += timestamp.delta_seconds
@@ -282,13 +350,11 @@ def main():
         print('destroying actors')
         sensor.destroy()
         client.apply_batch([carla.command.DestroyActor(x) for x in actor_list])
-        # for actor in actor_list:
-        #     actor.destroy()
-
         for i in range(0, len(all_id), 2):
             all_actors[i].stop()
             client.apply_batch([carla.command.DestroyActor(x) for x in all_id])
         print('done.')
+
 
 if __name__ == '__main__':
 
