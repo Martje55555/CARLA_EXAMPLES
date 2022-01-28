@@ -37,15 +37,6 @@ def process_img(image):
     cv2.waitKey(1)
     return i3 / 255.0
 
-def process_img_rear(image):
-    i = np.array(image.raw_data)
-    print(i.shape)
-    i2 = i.reshape((1440, 2560, 4))
-    i3 = i2[:, :, :3]
-    cv2.imshow("", i3)
-    cv2.waitKey(1)
-    return i3 / 255.0
-
 def clamp(value, minimum=0.0, maximum=100.0):
     return max(minimum, min(value, maximum))
 
@@ -300,15 +291,10 @@ def main():
 
         # attatch camera to vehicle
         vehicle_cam = blueprint_library.find('sensor.camera.rgb')
-        #rear_cam = blueprint_library.find('sensor.camera.rgb')
         # vehicle_cam.set_attribute('PostProcessing', 'SceneFinal')
         vehicle_cam.set_attribute('image_size_x', f"{IM_WIDTH}")
         vehicle_cam.set_attribute('image_size_y', f"{IM_HEIGHT}")
         vehicle_cam.set_attribute('fov', '110')
-
-        # rear_cam.set_attribute('image_size_x', "1440")
-        # rear_cam.set_attribute('image_size_y', "2560")
-        # rear_cam.set_attribute('fov', '60')
 
         # set camera near hood of vehicle
         spawn_point = carla.Transform(carla.Location(x=.20, y=0, z=1.10))
@@ -320,7 +306,6 @@ def main():
         #actor_list.append(rear_sensor)
         actor_list.append(sensor)
 
-        #rear_sensor.listen(lambda data: process_img_rear(data))
         sensor.listen(lambda data: process_img(data))
 
         speed_factor = 5.0
