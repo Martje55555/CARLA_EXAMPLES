@@ -34,8 +34,6 @@ IM_HEIGHT = 1440
 actor_list = []
 all_id = []
 walkers_list = []
-#all_actors = []
-
 
 try:
     import pygame
@@ -127,7 +125,7 @@ def get_actor_blueprints(world, filter, generation):
 # ==============================================================================
 
 def spawn_pedestrians(world, client, number_of_pedestrians):
-            # add pedestrians to the world
+    # add pedestrians to the world
     blueprintsWalkers = world.get_blueprint_library().filter("walker.pedestrian.*")
     walker_bp = random.choice(blueprintsWalkers)
 
@@ -151,7 +149,6 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
         else:
             walkers_list.append({"id": results[i].actor_id})
 
-
     batch = []
     walker_controller_bp = world.get_blueprint_library().find('controller.ai.walker')
     for i in range(len(walkers_list)):
@@ -164,7 +161,6 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
             logging.error(results[i].error)
         else:
             walkers_list[i]["con"] = results[i].actor_id
-
 
     for i in range(len(walkers_list)):
         all_id.append(walkers_list[i]["con"])
@@ -181,8 +177,7 @@ def spawn_pedestrians(world, client, number_of_pedestrians):
         all_actors[i].go_to_location(world.get_random_location_from_navigation())
         # random max speed
         all_actors[i].set_max_speed(1 + random.random())
-
-    
+ 
     print(len(walkers_list))
 
 
@@ -226,7 +221,6 @@ def spawn_pedestrians_around_ego_vehicles(ego_vehicle, radius, spawn_points, num
         else:
             walkers_list.append({"id": results[i].actor_id})
 
-
     batch = []
     walker_controller_bp = world.get_blueprint_library().find('controller.ai.walker')
     for i in range(len(walkers_list)):
@@ -239,7 +233,6 @@ def spawn_pedestrians_around_ego_vehicles(ego_vehicle, radius, spawn_points, num
             logging.error(results[i].error)
         else:
             walkers_list[i]["con"] = results[i].actor_id
-
 
     for i in range(len(walkers_list)):
         all_id.append(walkers_list[i]["con"])
@@ -294,7 +287,6 @@ def spawn_vehicles_around_ego_vehicles(ego_vehicle, radius, spawn_points, number
         tm.distance_to_leading_vehicle(v, 0.5)
         tm.vehicle_percentage_speed_difference(v, -20)
     print(len(vehicle_list))
-
 
 class World(object):
     def __init__(self, carla_world, args, client):
@@ -391,18 +383,6 @@ class World(object):
         self._weather_index %= len(self._weather_presets)
         preset = self._weather_presets[self._weather_index]
         self.player.get_world().set_weather(preset[0])
-
-    def next_map_layer(self, reverse=False):
-        self.current_map_layer += -1 if reverse else 1
-        self.current_map_layer %= len(self.map_layer_names)
-        selected = self.map_layer_names[self.current_map_layer]
-
-    def load_map_layer(self, unload=False):
-        selected = self.map_layer_names[self.current_map_layer]
-        if unload:
-            self.world.unload_map_layer(selected)
-        else:
-            self.world.load_map_layer(selected)
 
     def modify_vehicle_physics(self, actor):
         #If actor is not a vehicle, we cannot use the physics control
@@ -522,10 +502,6 @@ class KeyboardControl(object):
             self._lights = carla.VehicleLightState.NONE
             world.player.set_autopilot(self._autopilot_enabled)
             world.player.set_light_state(self._lights)
-        elif isinstance(world.player, carla.Walker):
-            self._control = carla.WalkerControl()
-            self._autopilot_enabled = False
-            self._rotation = world.player.get_transform().rotation
         else:
             raise NotImplementedError("Actor type not supported")
         self._steer_cache = 0.0
@@ -554,7 +530,6 @@ class KeyboardControl(object):
 # ==============================================================================
 # -- game_loop() ---------------------------------------------------------------
 # ==============================================================================
-
 
 def game_loop(args):
     pygame.init()
@@ -617,6 +592,8 @@ def game_loop(args):
         clock = pygame.time.Clock()
 
         #timeout = time.time() + 30.0  # 60*5 = 5 minutes from now
+        oldTime = time.time()
+        weather = static_weather_parameters[0]
 
         while True:
             if args.sync:
@@ -625,16 +602,20 @@ def game_loop(args):
             if controller.parse_events(client, world, clock, args.sync):
                 return
 
-            if math.floor(time.time()) % 10 == 0:
-                randomWeather = random.choice(static_weather_parameters)
-                sim_world.set_weather(random.choice(randomWeather))
-                sys.stdout.write('\r' + str(randomWeather))
+            if time.time() - oldTime >= (59) and time.time() - oldTime < (59*2) and weather != static_weather_parameters[12]:
+                weather = static_weather_parameters[12]
+                sim_world.set_weather(weather)
+                sys.stdout.write(str(weather))
+    
+            if time.time() - oldTime >= (59*2) and time.time() < (60*3) and weather != static_weather_parameters[0]:
+                weather = static_weather_parameters[0]
+                sim_world.set_weather(weather)
+                sys.stdout.write(str(weather))
 
             world.render(display)
             pygame.display.flip()
 
                   
-
     finally:
 
         if original_settings:
@@ -681,7 +662,7 @@ def main():
         '--res',
         metavar='WIDTHxHEIGHT',
         default='2560x1440',
-        help='window resolution (default: 1280x720)')
+        help='window resolution (default: 2560x1440)')
     argparser.add_argument(
         '--filter',
         metavar='PATTERN',
